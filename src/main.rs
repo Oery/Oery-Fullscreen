@@ -1,14 +1,16 @@
 #![windows_subsystem = "windows"]
 
+use std::ptr;
 use std::sync::mpsc;
 use std::thread::{self};
 
 use tray_item::{IconSource, TrayItem};
 use windows_sys::Win32::Foundation::{HWND, POINT, WPARAM};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{MOD_SHIFT, VK_F11};
+use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, GetMessageW, GetWindowLongPtrW, SetWindowPos, MSG, SWP_NOZORDER, WM_HOTKEY,
-    WS_VISIBLE,
+    DispatchMessageW, GetMessageW, GetWindowLongPtrW, SetWindowPos, MSG, SWP_NOZORDER, SW_SHOW,
+    WM_HOTKEY, WS_VISIBLE,
 };
 use windows_sys::Win32::UI::{
     Input::KeyboardAndMouse::RegisterHotKey,
@@ -45,6 +47,28 @@ fn toggle_window_style() {
         } else {
             maximize_window(hwnd);
         }
+    }
+}
+
+fn elevate_privileges() {
+    let operation: Vec<u16> = "runas".encode_utf16().chain(Some(0)).collect();
+    let file: Vec<u16> = std::env::current_exe()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+
+    unsafe {
+        ShellExecuteW(
+            0 as HWND,
+            operation.as_ptr(),
+            file.as_ptr(),
+            ptr::null(),
+            ptr::null(),
+            SW_SHOW,
+        );
     }
 }
 
@@ -88,6 +112,13 @@ fn main() {
     let (tx, rx) = mpsc::sync_channel(1);
 
     let quit_tx = tx.clone();
+
+    tray.add_menu_item("Restart as Admin", move || {
+        elevate_privileges();
+        std::process::exit(0);
+    })
+    .unwrap();
+
     tray.add_menu_item("Quit", move || {
         quit_tx.send(Message::Quit).unwrap();
     })
